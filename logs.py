@@ -1,56 +1,85 @@
-#Gfhdthev
-#Логирование
-
-
-#импортируем библиотеки
 import os
 import datetime
 import pandas as pd
+from functools import wraps
 
-#берем имя пользователя компьютера
-user=os.getlogin()
+# порядок колонок: User_id (id) будет первым
+COLUMNS = [
+    "User_id",   # id пользователя
+    "No",        # номер записи
+    "Motion",
+    "Message_text",
+    "API",
+    "API_answer",
+    "Date",
+    "Time"
+]
 
-#работа с временем
 def now_time():
-    now_date=datetime.datetime.now().strftime('%d.%m.%Y') #полное время, включая год, месяц и т.д.
-    return now_date
-def sec():
-    now_datetime=str(datetime.datetime.now()).split() #разделяем на дату и время
-    current_time= now_datetime[1] #берем только время
-    return current_time
+    return datetime.datetime.now().strftime('%d.%m.%Y')
 
+def sec():
+    return datetime.datetime.now().strftime('%H:%M:%S')
 
 def logging(func):
+    @wraps(func)
     def wrapper(message, *args, **kwargs):
-        result = func(*args, **kwargs)
+        # вызываем оригинальный хендлер
+        result = func(message, *args, **kwargs)
 
-        if message.text not in ['Cosmos', 'Dogs', 'Weather']:
+        # получаем user_id
+        try:
+            user_id = message.from_user.id
+        except Exception:
+            user_id = 'none'
+
+        text = getattr(message, 'text', '')
+        api, api_answer = 'none', 'none'
+
+        if text in ['/start', 'СТАРТ']:
+            motion = 'Command: start'
+            message_text = ''
+        elif text in ['Weather', 'Dogs', 'Cosmos']:
+            motion = f'Button: {text}'
+            message_text = ''
+            if isinstance(result, (list, tuple)) and len(result) >= 2:
+                api = result[0] or 'none'
+                api_answer = result[1] or 'none'
+        else:
             motion = 'Keyboard typing'
-            message_text = message.text
-            api = 'NONE'
-            api_answer = 'NONE'
+            message_text = text
 
-        elif message.text in ['start']:
-            motion = f'Button: {message.text}'
-            message_text = 'NONE'
-            api = 'NONE'
-            api_answer = 'NONE'
+        # формируем словарь для одной строки лога
+        log_entry = {
+            "User_id":      user_id,
+            "No":           None,       # заполним чуть ниже
+            "Motion":       motion,
+            "Message_text": message_text,
+            "API":          api,
+            "API_answer":   api_answer,
+            "Date":         now_time(),
+            "Time":         sec()
+        }
 
+        log_path = os.path.join(os.getcwd(), 'logs.csv')
+
+        if os.path.exists(log_path):
+            # читаем существующий лог, чтобы узнать последний номер
+            existing = pd.read_csv(log_path)
+            last_no = existing['No'].max() if 'No' in existing.columns else len(existing)
+            log_entry['No'] = int(last_no) + 1
+
+            # создаём DataFrame с заданным порядком колонок и дописываем
+            pd.DataFrame([log_entry], columns=COLUMNS)\
+                .to_csv(log_path, mode='a', index=False, header=False)
         else:
-            motion = f'Button: {message.text}'
-            message_text = 'NONE'
-            api = result[0]
-            api_answer = result[1]
+            # первый лог, номер = 1
+            log_entry['No'] = 1
 
-        if os.path.isfile('logs.csv'):#проверяем, существует ли файл
-            file_df = pd.read_csv('logs.csv')
-            data = {'': [len(file_df)], "User_id": [message.user.id], "Motion": motion, 'Message_text': message_text, 'API': api, 'API_answer': api_answer, "Date": [now_time()],"Time":[sec()]} #создаем столбцы
-            df = pd.DataFrame(data) #создаем сам датафрейм
-            df.to_csv('logs.csv', mode='a', index=False, header=False)
-        else:
-            data = {"User_id": [message.user.id], "Motion": motion, 'Message_text': message_text, 'API': api, 'API_answer': api_answer, "Date": [now_time()],"Time":[sec()]} #создаем столбцы
-            df = pd.DataFrame(data) #создаем сам датафрейм
-            df.to_csv('logs.csv')
+            # создаём новый CSV с хедером и нужным порядком колонок
+            pd.DataFrame([log_entry], columns=COLUMNS)\
+                .to_csv(log_path, mode='w', index=False)
 
         return result
+
     return wrapper

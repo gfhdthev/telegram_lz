@@ -1,74 +1,79 @@
-#Gfhdthev
-#Лабоарторная работа №1. Создание телеграмм бота
-
+import requests
+from telebot import TeleBot, types
 from secret import secrets
 from logs import logging
 
-import telebot
-from telebot import types
-import requests
+bot = TeleBot(secrets['telegram_bot_token'])
 
-bot = telebot.TeleBot(secrets['telegram_bot_token'])
+bot.set_my_commands([
+    types.BotCommand("start", "СТАРТ")
+], language_code='ru')
 
-@logging
 @bot.message_handler(commands=['start'])
-def start(message:telebot.Message):
+@bot.message_handler(func=lambda m: m.text == 'СТАРТ', content_types=['text'])
+@logging
+def start(message):
     markup = types.ReplyKeyboardMarkup(resize_keyboard=True)
-    btn1 = types.KeyboardButton("Weather")
-    btn2 = types.KeyboardButton("Dogs")
-    btn3 = types.KeyboardButton("Cosmos")
-    markup.add(btn1, btn2, btn3)
-    bot.send_message(message.chat.id, "Выберите категорию:", reply_markup=markup)
+    markup.add(
+        types.KeyboardButton("Weather"),
+        types.KeyboardButton("Dogs"),
+        types.KeyboardButton("Cosmos")
+    )
+    bot.send_message(
+        message.chat.id,
+        "Выберите категорию:",
+        reply_markup=markup
+    )
 
+@bot.message_handler(func=lambda msg: True, content_types=['text'])
 @logging
-@bot.message_handler(func=lambda message: True)
 def handle_buttons(message):
-    if message.text == "Weather":
+    text = message.text
+
+    if text == "Weather":
         city = "Minsk"
-        url = f"http://api.weatherapi.com/v1/current.json?key={secrets['weatherapi_key']}&q={city}"
-        response = requests.get(url).json()
-        temp = response['main']['temp']
-        desc = response['weather'][0]['description']
-        answer = ['weatherapi.com', f"Погода в {city}: {temp}°C, {desc}"]
-        bot.send_message(message.chat.id, answer[1])
-
-    elif message.text == "Dogs":
-        url = f"https://dog.ceo/api/breeds/image/random"
-        response = requests.get(url).json()
-        image_url = response['message']
-        answer = ['dog.ceo', f"{image_url}"]
-        bot.send_message(message.chat.id, answer[1])
-
-    elif message.text == "Cosmos":
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
-        
-        title = data.get('title', 'Без названия')
-        explanation = data.get('explanation', 'Описание отсутствует')
-        image_url = data['url']
-        
-        # Ограничиваем длину подписи до 1024 символов
-        max_caption_length = 1024
-        caption = f"{title}\n\n{explanation}"
-        
-        if len(caption) > max_caption_length:
-            # Обрезаем текст и добавляем многоточие
-            caption = caption[:max_caption_length-3] + "..."
-        
-        # Отправляем фото с обрезанной подписью
-        bot.send_photo(
-            message.chat.id,
-            image_url,
-            caption=caption
+        url = ("http://api.weatherapi.com/v1/current.json""?key={secrets['weatherapi_key']}&q={city}"
         )
-        answer = ['nasa.gov', caption]
+        resp = requests.get(url)
+        if resp.ok:
+            data = resp.json()
+            temp = data['current']['temp_c']
+            desc = data['current']['condition']['text']
+            answer = f"Погода в {city}: {temp}°C, {desc}"
+        else:
+            answer = "Не удалось получить данные о погоде."
+        bot.send_message(message.chat.id, answer)
 
-    return answer
+    elif text == "Dogs":
+        url = "https://dog.ceo/api/breeds/image/random"
+        resp = requests.get(url)
+        if resp.ok:
+            image_url = resp.json().get('message')
+            bot.send_photo(message.chat.id, image_url)
+        else:
+            bot.send_message(message.chat.id, "Не удалось загрузить изображение собаки.")
 
-@logging
-@bot.message_handler(content_types=['text'])
-def handle_messages(message):
-    bot.send_message(message.chat.id, f'Вы написали \'{message.text}\', я не знаю такой команды')
+    elif text == "Cosmos":
+        url = f"https://api.nasa.gov/planetary/apod?api_key={secrets['nasa_key']}"
+        resp = requests.get(url)
+        if resp.ok:
+            data = resp.json()
+            title = data.get('title', 'Без названия')
+            explanation = data.get('explanation', 'Описание отсутствует')
+            image_url = data.get('url')
 
-bot.polling(none_stop=True)
+            caption = f"{title}\n\n{explanation}"
+            if len(caption) > 1024:
+                caption = caption[:1021] + "..."
+            bot.send_photo(message.chat.id, image_url, caption=caption)
+        else:
+            bot.send_message(message.chat.id, "Не удалось получить данные от NASA.")
+
+    else:
+        bot.send_message(
+            message.chat.id,
+            f"Вы написали '{text}', я не знаю такой команды."
+        )
+
+if __name__ == "__main__":
+    bot.polling(none_stop=True)
