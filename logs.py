@@ -3,10 +3,9 @@ import datetime
 import pandas as pd
 from functools import wraps
 
-# порядок колонок: User_id (id) будет первым
 COLUMNS = [
+    "ID",        # номер записи
     "User_id",   # id пользователя
-    "No",        # номер записи
     "Motion",
     "Message_text",
     "API",
@@ -26,22 +25,18 @@ def logging(func):
     def wrapper(message, *args, **kwargs):
         # вызываем оригинальный хендлер
         result = func(message, *args, **kwargs)
-
-        # получаем user_id
-        try:
-            user_id = message.from_user.id
-        except Exception:
-            user_id = 'none'
+        user_id = message.from_user.id
 
         text = getattr(message, 'text', '')
-        api, api_answer = 'none', 'none'
+        api = 'None'
+        api_answer = 'None'
 
         if text in ['/start', 'СТАРТ']:
             motion = 'Command: start'
-            message_text = ''
+            message_text = 'None'
         elif text in ['Weather', 'Dogs', 'Cosmos']:
             motion = f'Button: {text}'
-            message_text = ''
+            message_text = 'None'
             if isinstance(result, (list, tuple)) and len(result) >= 2:
                 api = result[0] or 'none'
                 api_answer = result[1] or 'none'
@@ -51,8 +46,8 @@ def logging(func):
 
         # формируем словарь для одной строки лога
         log_entry = {
+            "ID":           None,
             "User_id":      user_id,
-            "No":           None,       # заполним чуть ниже
             "Motion":       motion,
             "Message_text": message_text,
             "API":          api,
@@ -66,15 +61,15 @@ def logging(func):
         if os.path.exists(log_path):
             # читаем существующий лог, чтобы узнать последний номер
             existing = pd.read_csv(log_path)
-            last_no = existing['No'].max() if 'No' in existing.columns else len(existing)
-            log_entry['No'] = int(last_no) + 1
+            last_no = existing['Id'].max() if 'Id' in existing.columns else len(existing)
+            log_entry['Id'] = int(last_no) + 1
 
             # создаём DataFrame с заданным порядком колонок и дописываем
             pd.DataFrame([log_entry], columns=COLUMNS)\
                 .to_csv(log_path, mode='a', index=False, header=False)
         else:
             # первый лог, номер = 1
-            log_entry['No'] = 1
+            log_entry['Id'] = 1
 
             # создаём новый CSV с хедером и нужным порядком колонок
             pd.DataFrame([log_entry], columns=COLUMNS)\
