@@ -1,15 +1,18 @@
-import os
-import datetime
-import pandas as pd
-from functools import wraps
+#Gfhdthev
+#Логированием телеграмм бота
 
+import os
+import csv
+import datetime
+
+# Названия колонок для CSV-файла
 COLUMNS = [
-    "ID",        # номер записи
-    "User_id",   # id пользователя
-    "Motion",
-    "Message_text",
+    "ID",        
+    "User_id",   
+    "Motion", #действие
+    "Message_text", #если сообщение, то его текст
     "API",
-    "API_answer",
+    "API_answer", #ответ от апи
     "Date",
     "Time"
 ]
@@ -21,59 +24,56 @@ def sec():
     return datetime.datetime.now().strftime('%H:%M:%S')
 
 def logging(func):
-    @wraps(func)
     def wrapper(message, *args, **kwargs):
-        # вызываем оригинальный хендлер
         result = func(message, *args, **kwargs)
+
         user_id = message.from_user.id
+        text = message.text
 
-        text = getattr(message, 'text', '')
-        api = 'None'
-        api_answer = 'None'
-
+        #проверяем, что нам надо записать
         if text in ['/start', 'СТАРТ']:
             motion = 'Command: start'
             message_text = 'None'
-        elif text in ['Weather', 'Dogs', 'Cosmos']:
+            api, api_answer = 'None', 'None'
+        elif text in ['Weather', 'Dogs', 'Space']:
             motion = f'Button: {text}'
             message_text = 'None'
-            if isinstance(result, (list, tuple)) and len(result) >= 2:
-                api = result[0] or 'none'
-                api_answer = result[1] or 'none'
+            api, api_answer = result
         else:
             motion = 'Keyboard typing'
             message_text = text
+            api, api_answer = 'None', 'None'
 
-        # формируем словарь для одной строки лога
-        log_entry = {
-            "ID":           None,
-            "User_id":      user_id,
-            "Motion":       motion,
-            "Message_text": message_text,
-            "API":          api,
-            "API_answer":   api_answer,
-            "Date":         now_time(),
-            "Time":         sec()
-        }
+        #смотрим нашу дирректорию на наличие файла
+        log_path = 'logs.csv'
+        file_exists = os.path.exists(log_path)
 
-        log_path = os.path.join(os.getcwd(), 'logs.csv')
+        #если файл есть, то смотрим id следующего лога
+        if file_exists:
+            with open(log_path, 'r', encoding='utf-8') as f:
+                reader = csv.reader(f)
+                next(reader, None)  # пропускаем заголовок
+                last_id = sum(1 for _ in reader)
+            record_id = last_id + 1
+        else: #если нету, то 1
+            record_id = 1
 
-        if os.path.exists(log_path):
-            # читаем существующий лог, чтобы узнать последний номер
-            existing = pd.read_csv(log_path)
-            last_no = existing['Id'].max() if 'Id' in existing.columns else len(existing)
-            log_entry['Id'] = int(last_no) + 1
-
-            # создаём DataFrame с заданным порядком колонок и дописываем
-            pd.DataFrame([log_entry], columns=COLUMNS)\
-                .to_csv(log_path, mode='a', index=False, header=False)
-        else:
-            # первый лог, номер = 1
-            log_entry['Id'] = 1
-
-            # создаём новый CSV с хедером и нужным порядком колонок
-            pd.DataFrame([log_entry], columns=COLUMNS)\
-                .to_csv(log_path, mode='w', index=False)
+        with open(log_path, 'a', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            #если файла не было, то добавляем заголовок
+            if not file_exists:
+                writer.writerow(COLUMNS)
+            #записываем строку со значениями
+            writer.writerow([
+                record_id,
+                user_id,
+                motion,
+                message_text,
+                api,
+                api_answer,
+                now_time(),
+                sec()
+            ])
 
         return result
 
