@@ -53,21 +53,41 @@ def handle_buttons(message):
     elif text == "Space":
         url = f"https://api.nasa.gov/planetary/apod?api_key={secrets['nasa_key']}"
         resp = requests.get(url)
-        if resp.ok: #если ответ есть, то гуд
+        if resp.ok:
             data = resp.json()
             title = data.get('title', 'Без названия')
             explanation = data.get('explanation', 'Описание отсутствует')
+            media_type = data.get('media_type', 'other')
             image_url = data.get('url')
-
+            #подпись делаем 1021 сиввол + ...
             caption = f"{title}\n\n{explanation}"
-            if len(caption) > 1024: #отправляем только первый 1024 символа, потому что тг больше не пропускает
+            if len(caption) > 1024:
                 caption = caption[:1021] + "..."
-            bot.send_photo(message.chat.id, image_url, caption=caption)
-            answer = f'{image_url}, {title}'
+
+            if media_type == 'image' and image_url:
+                #картинка
+                bot.send_photo(message.chat.id, image_url, caption=caption)
+                answer = f'{image_url}, {title}'
+            elif media_type == 'video' and image_url:
+                #видео
+                try:
+                    bot.send_video(message.chat.id, image_url, caption=caption)
+                    answer = f'{image_url}, {title}'
+                except Exception:
+                    #если телеграмм козлиться, то отправим как сообщение с ссылкой
+                    bot.send_message(message.chat.id, f"{title}\n\n{explanation}\n\nВидео: {image_url}")
+                    answer = f'video_link: {image_url}, {title}'
+            else:
+                #отправляем текстовую версию
+                text_reply = f"{title}\n\n{explanation}"
+                bot.send_message(message.chat.id, text_reply)
+                answer = f'no_media_url, {title}'
+
         else:
             answer = "Не удалось получить данные от NASA."
             bot.send_message(message.chat.id, answer)
         answer_to_log = ['nasa.gov', answer]
+
 
     else:
         bot.send_message(
